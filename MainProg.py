@@ -4,9 +4,10 @@ import sys
 
 from Source.GuiClass import runGui
 from Source.AppClass import TestApp
-from Source.PredictClasses import runPre
+from Source.UtilitiesClasses import disLog
+from Source.WatchClasses import runWat
 
-
+from inspect import currentframe, getframeinfo
 '''
 def old():
     window = Tk()
@@ -36,25 +37,22 @@ def action():
 '''
 
 
+
 def main():
-    print("cucu")
-    gui2tws = mp.Queue()
-    tws2gui = mp.Queue()
+    disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+           "cucu","bubu")
+    toTws = mp.Queue()
+    toGui = mp.Queue()
+    toWat = mp.Queue()
 
-    gui2pre = mp.Queue()
-    pre2gui = mp.Queue()
-
-    tws2pre=mp.Queue()
-    pre2tws=mp.Queue()
-
-    gui = mp.Process(target=runGui, args=(gui2tws, tws2gui,gui2pre,pre2gui))
+    gui = mp.Process(target=runGui, args=(toTws, toGui,toWat))
     gui.start()
 
-    pre = mp.Process(target=runPre,args=(gui2tws, tws2gui,gui2pre,pre2gui))
+    pre = mp.Process(target=runWat,args=(toTws, toGui,toWat))
     pre.start()
 
-    app = TestApp(gui2tws, tws2gui,tws2pre,pre2tws)
-    #tws2gui.put("ma conectez")
+    app = TestApp(toTws, toGui,toWat)
+    #toGui.put("ma conectez")
     #app.connect('127.0.0.1', 7496, 1)
     app.run()
 

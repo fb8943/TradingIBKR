@@ -1,3 +1,4 @@
+import datetime
 import tkinter as tk
 from tkinter import ttk
 import sys
@@ -5,25 +6,34 @@ import queue
 from tkinter import filedialog as fd
 
 from Source.ChartClass import UtilityChart
+from Source.OnesClasses import OneStock
 from Source.SQLiteClass import DB
-from Source.UtilitiesClasses import toTws
+from Source.UtilitiesClasses import toMessage,DownloadLimit
 from Source.PredictClasses import UtilityPredict
 from Source.ContractClasses import UtilityContract
+from Source.WatchClasses import UtilityWatch
 
 import matplotlib
+import time
 matplotlib.use("TkAgg")
-
+import queue
 
 class Gui:
 
-    def __init__(self, gui2tws, tws2gui,gui2pre,pre2gui):
+    def __init__(self, toTws, toGui,toWat):
 
-        self.gui2tws = gui2tws
-        self.tws2gui = tws2gui
-        self.gui2pre=  gui2pre
-        self.pre2gui=  pre2gui
+        self.toTws = toTws
+        self.toGui = toGui
+        self.toWat=  toWat
 
+        self.exit=False
         self.index = 0
+        self.dlQueToLimit=queue.Queue()
+        #self.dlQueFromLimit = queue.Queue()
+        #self.downloadLimit=DownloadLimit(self.dlQueToLimit,self.dlQueFromLimit,self.toTws, self.toGui)
+        self.downloadLimit = DownloadLimit(self.dlQueToLimit, self.toTws, self.toGui)
+        self.downloadLimit.start()
+        self.dbLite=None
 
     def geGui2tws(self):
         print('here')
@@ -40,10 +50,11 @@ class Gui:
         self.create_tab_contracts()
         self.create_tab_predict()
         self.create_tab_chart()
+        self.create_tab_watch()
         # self.root.protocol("WM_DELETE_WINDOW", self.onQuit)
 
-        self.checkMsgFromTws()
-        self.checkMsgFromPredict()
+        self.checkMsg()
+        #self.checkMsgFromPredict()
 
     def create_tabs(self):
         tabControl = ttk.Notebook(self.root)
@@ -59,6 +70,9 @@ class Gui:
 
         self.tab_chart = ttk.Frame(tabControl)
         tabControl.add(self.tab_chart, text="Chart")
+
+        self.tab_watch = ttk.Frame(tabControl)
+        tabControl.add(self.tab_watch, text="Watch")
 
         tabControl.pack(expand=True, fill="both")
 
@@ -101,43 +115,95 @@ class Gui:
     def create_tab_chart(self):
         self.chart=UtilityChart(self)
 
-    def checkMsgFromPredict(self):
-        print("checkMsgFromPredict")
+    def create_tab_watch(self):
+        self.watch=UtilityWatch(self)
+
+    def buttons(self,action):
+        if(action=='Enable'):
+            self.contract.enableBtn()
+        elif(action=='Disable'):
+            self.contract.disableBtn()
+        else:
+            print("unknows actions in buttons function in GuiClass.py")
+
+    def checkMsg(self):
+
         try:
-            while not self.tws2gui.empty():
-                pass
+            while not self.toGui.empty():
+                #print("not empty")
+                msg:toMessage = self.toGui.get_nowait()
+                #stemp = str(self.index)
+                #print('checkMsgFromTws msg ',msg.purpose)
+                #self.listbox.insert(0, stemp + "-" + msg.purpose)
+                #self.index = self.index + 1
 
-        except queue.Empty:
-            print("empty checkMsgFromPredict")
-            pass
-
-        self.root.after(1000, self.checkMsgFromPredict)
-
-    def checkMsgFromTws(self):
-        try:
-            while not self.tws2gui.empty():
-                print("not empty")
-                msg = str(self.tws2gui.get_nowait())
-                stemp = str(self.index)
-                print('checkMsgFromTws msg ',msg)
-                self.listbox.insert(0, stemp + "-" + str(msg))
-                self.index = self.index + 1
-
-                if msg.startswith('ERROR'):
-                    print('TWS Error', msg)
-                elif msg.startswith('NEWROW'):
+                if msg.purpose=='ERROR':
+                    print('TWS Error', str(msg.obj))
+                elif msg.purpose=='NEWROW':
                     print('newrow')
-                elif msg.startswith('END'):
+                elif msg.purpose=='END':
                     print('end')
+                elif msg.purpose=='HistFinish':
+                    print('HistFinish')
+                    #send message to DownloadLimit class in UtilitiesClasses.py
+                    self.dlQueToLimit.put(msg)# put the message in the thread queue
+                elif msg.purpose=='Buttons':
+                    self.buttons(msg.obj)
+                elif msg.purpose=='load1min':
+                    self.load1min(msg.obj)
+                elif msg.purpose=='histnewLevel1End':
+                    self.load1min(msg.obj)  # let's load the 1 min and send to the watch
+                elif msg.purpose=='UpdatePanels':
+                    self.updatePanels(msg.obj)
                 else:
                     # TODO: Error here?
                     pass
                     print(f'Unknown GUI message: {msg}')
         except queue.Empty:
-            print("empty")
+            print("check Msg is empty in gui")
             pass
+        #stop the loop
 
-        self.root.after(100, self.checkMsgFromTws)
+        if self.exit==False:
+            self.root.after(100, self.checkMsg)
+
+    def updatePanels(self,item):
+        #print('updatePanel ',item[0],item[1],item[2],item[3])
+        self.watch.Panels[item[0]].updatePanel(item[1],item[2],item[3])
+
+    def load1min(self,item):
+        if self.dbLite==None:
+            print('Database is not loaded - load1min')
+            return
+
+        if isinstance(item, int)==True:
+            item=self.dbLite.getItem(item)
+            print('item is integer',item)
+        else:
+            print('item is item')
+
+        #let's verify if we really need data
+        dt = self.dbLite.getMaxDateTime(item.contractID)
+
+        FMT1 = '%Y%m%d  %H:%M:%S'
+        s1 = datetime.datetime.strftime(datetime.datetime.now(), FMT1)
+
+        tdelta = datetime.datetime.strptime(s1, FMT1) - datetime.datetime.strptime(dt, FMT1)
+        if tdelta.seconds > 3000:
+            print('load1min','we need to take the 1 minute data in level1')
+            toTWS = toMessage('histnewLevel1', item)
+            self.toTws.put(toTWS)
+        else:
+            print('load1min', 'we have the data load and go level2')
+            #let's download only 3000 bars
+
+            oneMin:OneStock=self.dbLite.getOneStock2(item.contractID,3000)
+            panda1min=self.dbLite.getOneStockPandas(item.contractID,3000)
+
+            mes=toMessage('data1min',[item.contractID,oneMin,panda1min])
+            self.toWat.put(mes)
+            time.sleep(1)  # not sure if necessary
+            self.watch.Panels[item.contractID].panelQue.put(toMessage('level2'))
 
     def run(self):
         self.init_gui()
@@ -146,20 +212,27 @@ class Gui:
 
     def ex(self):
         print('exit now')
-        to_tws = toTws("exit",None)
-        self.gui2tws.put(to_tws)
-        self.gui2pre.put(to_tws)
+        self.watch.StopPanelEngines()
+        mes = toMessage("exit", None)
+        #self.watch.myQueue.queue.clear()
+        #self.watch.myQueue.clear()
+        self.dlQueToLimit.put(mes)
+        time.sleep(1)
+
+        self.toTws.put(mes)
+        self.toWat.put(mes)
+        self.exit=True
         #time.sleep(1)
         self.root.destroy()
 
     def connect(self):
-        to_tws=toTws("connect",None)
-        self.gui2tws.put(to_tws)
-        print('i disconect')
+        to_tws=toMessage("connect", None)
+        self.toTws.put(to_tws)
+        print('i connect')
 
     def disconnect(self):
-        to_tws = toTws("disconnect",None)
-        self.gui2tws.put(to_tws)
+        to_tws = toMessage("disconnect", None)
+        self.toTws.put(to_tws)
         print('i disconect')
 
 
@@ -173,8 +246,8 @@ class Gui:
         for row in rows:
            # print(row[0])
             self.contract.treeContracts.insert("", "end", row[0],text="", values=row)
-        toTWS = toTws('database',dbname)
-        self.gui2tws.put(toTWS)
+        toTWS = toMessage('database', dbname)
+        self.toTws.put(toTWS)
 
     def choosedb(self):
         self.dbLite.dbname = fd.askopenfilename(initialdir="C:\\Users\\fb894\\PycharmProjects\\Test")
@@ -182,8 +255,8 @@ class Gui:
 
 
 
-def runGui(gui2tws, tws2gui,qui2pre,pre2qui):
-    gui = Gui(gui2tws, tws2gui,qui2pre,pre2qui)
+def runGui(toTws, toGui,toPre):
+    gui = Gui(toTws, toGui,toPre)
     gui.run()
 
 

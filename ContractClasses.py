@@ -1,8 +1,11 @@
+import sys
+from inspect import getframeinfo, currentframe
+
 from Source.OnesClasses import OneContract, OneStock
 import tkinter as tk
 from tkinter import ttk
 import datetime as dt
-from Source.UtilitiesClasses import toTws
+from Source.UtilitiesClasses import toMessage, disLog
 
 
 class UtilityContract:
@@ -100,13 +103,14 @@ class UtilityContract:
 
     def cancelmarketdata(self):
         #toTWS = self.gui.toTws('cancelmarketdata')
-        toTWS = toTws('cancelmarketdata')
-        self.gui.gui2tws.put(toTWS)
+        toTWS = toMessage('cancelmarketdata')
+        self.gui.toMessage.put(toTWS)
 
     def verifyData(self):
         item = self.treeContracts.selection()
         if not item:
-            print("nothing selected")
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   "nothing selected")
         else:
             conID = self.treeContracts.item(item)['values'][0]
             symbol='T'+str(conID)
@@ -120,7 +124,8 @@ class UtilityContract:
                 d1 = dt.datetime.strptime(oneStock.bars[i+1].date, format2)
                 delta = (d1 - d0).total_seconds()
                 if delta>60:
-                    print(item.date,oneStock.bars[i+1].date)
+                    disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                           item.date,oneStock.bars[i+1].date)
                 i=i+1
 
 
@@ -135,12 +140,13 @@ class UtilityContract:
                              self.cbWhatToShow.get(), self.cbActive.get(), id)
             #mrkdt=toTWSMarketData(ct)
             #toTWS = self.gui.toTws('marketdata',id)
-            toTWS = toTws('marketdata', id)
+            toTWS = toMessage('marketdata', id)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
+            self.gui.toTws.put(toTWS)
 
 
     def histnew(self):
+
         item = self.treeContracts.selection()
         if not item:
             print("nothing selected")
@@ -150,10 +156,11 @@ class UtilityContract:
                              self.cbSecType.get(), self.cbBarSize.get(),
                              self.cbWhatToShow.get(), self.cbActive.get(), conID)
             #toTWS = self.gui.toTws('histnew', ct)
-            toTWS = toTws('histnew', ct)
+            toTWS = toMessage('histnew', ct)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
-            #self.gui.geGui2tws()
+            self.gui.toTws.put(toTWS)
+            #self.gui.getoTws()
+
 
     def histold(self):
         item = self.treeContracts.selection()
@@ -165,18 +172,26 @@ class UtilityContract:
                              self.cbSecType.get(), self.cbBarSize.get(),
                              self.cbWhatToShow.get(), self.cbActive.get(), conID)
             #toTWS = self.gui.toTws('histold', ct)
-            toTWS = toTws('histold', ct)
+            toTWS = toMessage('histold', ct)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
+            self.gui.toTws.put(toTWS)
 
+    def disableBtn(self):
+        self.bHistNew['state']='disable'
+        self.bHistOld['state']='disable'
+
+    def enableBtn(self):
+        self.bHistNew['state']='normal'
+        self.bHistOld['state']='normal'
 
     def DispTest(self):
 
         # d=self.dbLite.getOneStock('T11')
         # convertToHigher(d,'5min')
         # convertToSameVolume(d[0:3],1500)
-        d = self.gui.dbLite.getOneStock2('T11')
-        print(d.bars[1])
+        d = self.gui.dbLite.getOneStock2('11')
+        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+               d.bars[1])
         pass
         # self.dbLite.getContract()
 
@@ -190,9 +205,9 @@ class UtilityContract:
                              self.cbSecType.get(), self.cbBarSize.get(),
                              self.cbWhatToShow.get(), self.cbActive.get(), conID)
             #toTWS = self.gui.toTws('watchStart', ct)
-            toTWS = toTws('watchStart', ct)
+            toTWS = toMessage('watchStart', ct)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
+            self.gui.toTws.put(toTWS)
 
     def stopWatch(self):
         item = self.treeContracts.selection()
@@ -204,11 +219,13 @@ class UtilityContract:
                              self.cbSecType.get(), self.cbBarSize.get(),
                              self.cbWhatToShow.get(), self.cbActive.get(), conID)
             #toTWS = self.gui.toTws('stopStart', ct)
-            toTWS = toTws('stopStart', ct)
+            toTWS = toMessage('stopStart', ct)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
+            self.gui.toTws.put(toTWS)
 
     def startWatch5Sec(self):
+        print("this is disable")
+        return
         item = self.treeContracts.selection()
         if not item:
             print("nothing selected")
@@ -220,11 +237,13 @@ class UtilityContract:
                              self.cbSecType.get(), self.cbBarSize.get(),
                              self.cbWhatToShow.get(), self.cbActive.get(), conID)
             #toTWS = self.gui.toTws('watchStart', ct)
-            toTWS = toTws('watchStart5Sec', ct)
+            toTWS = toMessage('Start5SecWatch', ct)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
+            self.gui.toTws.put(toTWS)
 
     def stopWatch5Sec(self):
+        print("this is disable")
+        return
         item = self.treeContracts.selection()
         if not item:
             print("nothing selected")
@@ -234,9 +253,9 @@ class UtilityContract:
                              self.cbSecType.get(), self.cbBarSize.get(),
                              self.cbWhatToShow.get(), self.cbActive.get(), conID)
             #toTWS = self.gui.toTws('stopStart', ct)
-            toTWS = toTws('stopStart5Sec', ct)
+            toTWS = toMessage('Stop5SecWatch', ct)
             # print(self.dbLite.getDateTimeToDownload())
-            self.gui.gui2tws.put(toTWS)
+            self.gui.toTws.put(toTWS)
 
 
     def addContract(self):
@@ -250,7 +269,7 @@ class UtilityContract:
             self.paneTreeContracts = tk.PanedWindow(self.gui.tab_contracts, height="300", width="700")
             self.paneTreeContracts.place(x=10, y=300)
 
-            self.treeContracts = ttk.Treeview(self.paneTreeContracts, height="3")
+            self.treeContracts = ttk.Treeview(self.paneTreeContracts, height="7")
             self.treeContracts.bind("<ButtonRelease-1>", self.treeContractsClick)
             self.treeContracts.pack(side='left')
             verscrlbar = ttk.Scrollbar(self.paneTreeContracts,
@@ -291,7 +310,8 @@ class UtilityContract:
 
     def treeContractsClick(self, event):
             item = self.treeContracts.selection()
-            print("you clicked on", self.treeContracts.item(item)['values'])
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   "you clicked on", self.treeContracts.item(item)['values'])
             val = self.treeContracts.item(item)['values']
             i = 1
             for item in (self.eCurrency, self.eSymbol, self.eExpire, self.cbExchange, self.cbSecType, self.cbBarSize,
@@ -306,7 +326,8 @@ class UtilityContract:
             print("nothing selected")
         else:
             self.treeContracts.delete(it)
-            print(it[0])
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   it[0])
             self.gui.dbLite.deleteContract(it[0])
             for item in (self.eCurrency, self.eSymbol, self.eExpire, self.cbExchange, self.cbSecType, self.cbBarSize,
                          self.cbWhatToShow, self.cbActive):
@@ -317,7 +338,8 @@ class UtilityContract:
         if not item:
             print("nothing selected")
         else:
-            print(item[0])
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   item[0])
             val = (item[0], self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
                    self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.cbActive.get())
             self.treeContracts.item(item, values=val)
@@ -325,4 +347,5 @@ class UtilityContract:
             # self.treeContracts.insert("", 0, val[0], text="", values=val)
             self.gui.dbLite.Update(val)
             # self.treeContracts.item(item,"values"=val)
-            print(val)
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   val)

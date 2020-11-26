@@ -1,11 +1,27 @@
+import sys
+import threading
 import datetime as dt
+import time
+from inspect import getframeinfo, currentframe
 
-from Source.OnesClasses import OneStock
+import numpy as np
+from ibapi.common import BarData
+
+from Source.OnesClasses import OneStock, OneContract
+def disLog(arg1, *argv):
+    return
+    print (arg1+": ")
+    for arg in argv:
+        print(arg, end =" ")
 
 
 def getStepSize(barSize,higherDate='',lowerDate=''):
     stepSize = {'1 sec': '1800 S', '5 secs': '3600 S', '10 secs': '14400 S', '30 secs': '28800 S',
                  '1 min': '2 D', '5 mins': '1 W', '30 30 mins': '1 M', '30 mins': '1 D'}
+#    stepSize = {'1 sec': '1800 S', '5 secs': '60 S', '10 secs': '14400 S', '30 secs': '28800 S',
+#                '1 min': '2 D', '5 mins': '1 W', '30 30 mins': '1 M', '30 mins': '1 D'}
+
+
     if higherDate=='' or lowerDate=='' or barSize != '1 min':
         return stepSize.get(barSize)
     print(higherDate,lowerDate)
@@ -97,11 +113,14 @@ def convertToSameVolume(d,volume):
 
 
 #this function will convert 1min bars to 5min, 10 min, etc
+#item in d are on the form of [date,open,high,low,close,volume,count
 def convertToHigher(d,newtime='5min'):
-    dic = {'2min': [2, 1],'5min': [5, 1], '15min': [15, 1], '10min': [10, 1], '30min': [30, 1], '2h': [60, 2],'4h': [60, 4]}
+    #we got 1min because we can convert 5 sec to 1 min
+    dic = {'1min':[1,1],'2min': [2, 1],'5min': [5, 1], '15min': [15, 1], '10min': [10, 1], '30min': [30, 1],
+           '1h': [60, 1],'2h': [60, 2],'4h': [60, 4]}
 
     if not(newtime in dic.keys()):
-        print(newtime,' is not a valid transformation')
+        print(newtime,' is not a valid transformation -converToHigher in Utilitieclasses.py')
         return None
 
     format = '%Y%m%d  %H:%M:%S'
@@ -111,24 +130,77 @@ def convertToHigher(d,newtime='5min'):
     res = []
     for item in d:
         d1 = dt.datetime.strptime(item[0], format)
-        print(item)
+        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),item)
 
         # no average
-        if d1.minute % a == 0 and d1.hour % b == 0:
+        if d1.minute % a == 0 and d1.hour % b == 0 and d1.second==0:
             if i > 0:
-                print('result= ', res[i - 1])
-            res.append(item)
+                disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno), 'result= ', res[i - 1])
+            it = BarData()
+            it.date = item.date
+            it.high = item.high
+            it.open = item.open
+            it.low = item.low
+            it.close = item.close
+            it.volume = item.volume
+            it.barCount = item.barCount
+            it.average = item.average
+            res.append(it)
             i = i + 1
         elif i > 0:  # skip the first
-            res[i - 1][2] = max(res[i - 1][2], item[2])  # maxim
-            res[i - 1][3] = min(res[i - 1][3], item[3])  # minimum
+            res[i - 1][2] = max(res[i - 1][2], item[2])  # high
+            res[i - 1][3] = min(res[i - 1][3], item[3])  # low
             res[i - 1][4] = item[4]  # close
             res[i - 1][5] = res[i - 1][5] + item[5]  # volume
             res[i - 1][6] = res[i - 1][6] + item[6]  # count
 
-    return res
+    #return res this is a list
+    return np.array(res) #return as a numpy
 
-class toTws:
+#this function will convert 1min bars to 5min, 10 min, etc
+#item in d are of BarData
+def convertToHigherBarData(d,newtime='5min'):
+    #we got 1min because we can convert 5 sec to 1 min
+    dic = {'1min':[1,1],'2min': [2, 1],'5min': [5, 1], '15min': [15, 1], '10min': [10, 1], '30min': [30, 1],
+           '1h': [60, 1],'2h': [60, 2],'4h': [60, 4]}
+
+    if not(newtime in dic.keys()):
+        print(newtime,' is not a valid transformation -converToHigher in Utilitieclasses.py')
+        return None
+
+    format = '%Y%m%d  %H:%M:%S'
+    a = dic.get(newtime)[0]
+    b = dic.get(newtime)[1]
+    i = 0
+    res = []
+    for item in d:
+        #item:BarData=ite
+        d1 = dt.datetime.strptime(item.date, format)
+
+        # no average
+        if d1.minute % a == 0 and d1.hour % b == 0 and d1.second==0:
+            it = BarData()
+            it.date = item.date
+            it.high = item.high
+            it.open = item.open
+            it.low = item.low
+            it.close = item.close
+            it.volume = item.volume
+            it.barCount = item.barCount
+            it.average = item.average
+            res.append(it)
+            i = i + 1
+        elif i > 0:  # skip the first
+            res[i - 1].high = max(res[i - 1].high, item.high)  # high
+            res[i - 1].low= min(res[i - 1].low, item.low)  # low
+            res[i - 1].close = item.close # close
+            res[i - 1].volume = res[i - 1].volume + item.volume  # volume
+            res[i - 1].count = res[i - 1].barCount + item.barCount  # count
+
+    #return res this is a list
+    return res #return as a list of BarData
+
+class toMessage:
     def __init__(self,purp,obj=None):
         self.purpose=purp
         self.obj=obj
@@ -139,6 +211,90 @@ class fromTws:
     def __init__(self,purp,obj=None):
         self.purpose=purp
         self.obj=obj
+
+        #this class will manage the start of the stocks
+
+
+
+class DownloadLimit(threading.Thread):
+    maxDownload = 60  # 60 how many I can download
+    waittime = 600  # 600
+    counter = 0
+    start_time=0
+
+    #def __init__(self,qIn,qOut,toTWS,toGui):
+    def __init__(self, qIn, toTWS, toGui):
+        threading.Thread.__init__(self)
+
+        self.qIn=qIn
+        #self.qOut=qOut
+        #so we can send messages to TWS
+        self.toTWS=toTWS
+        self.toGui=toGui
+
+        pass
+    ''' as a static
+    @staticmethod
+    def limit():
+        DownloadLimit.counter+=1
+    '''
+
+    def run(self):
+        stop=False
+        while stop is False:
+            if self.qIn.qsize()==0:
+                #nothing in queue
+                time.sleep(1)
+                #print('sleep 2 second in DownloadLimit')
+                continue
+
+            msg:toMessage=self.qIn.get_nowait()
+            if msg.purpose=='exit':
+                stop=True
+                continue
+
+            if msg.purpose=='HistFinish':
+                dlHistInfo:downloadHist=msg.obj
+
+                DownloadLimit.counter+=1 #this will be already 61
+                print('DownloadLimit.counter is ',DownloadLimit.counter)
+                if DownloadLimit.counter>DownloadLimit.maxDownload+1:
+
+                    msg2: toMessage = toMessage('Buttons', 'Disable')
+                    self.toGui.put(msg2)
+
+                    time.sleep(DownloadLimit.waittime)
+                    #reset the counter
+                    DownloadLimit.counter=0
+                    msg4: toMessage = toMessage('Buttons', 'Enable')
+                    self.toGui.put(msg4)
+
+                if dlHistInfo.whatToDownload=='histold':
+
+                    msg3:toMessage=toMessage('histold')
+                    msg3.obj=dlHistInfo.oneContract
+                    self.toTWS.put(msg3)
+
+                if dlHistInfo.whatToDownload=='histnew':
+                    msg3:toMessage = toMessage('histnew')
+                    msg3.obj = dlHistInfo.oneContract
+                    self.toTWS.put(msg3)
+
+
+    @classmethod
+    def limit(cls):
+        cls.counter+=1
+        if cls.counter>cls.maxDownload:
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   'already download: ',cls.maxDownload,' need to wait now')
+            time.sleep(cls.waittime)
+            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
+                   'you waited:',cls.waittime)
+            counter=1
+
+
+
+
 
 class downloadHist:
     #we don't want to go to further in the past for contracts 3 month for ES
@@ -171,56 +327,17 @@ class downloadHist:
 
         return ''
 
-    maxDownload=60 #how many I can download
-    waittime=600 #
+
     #def __init__(self,nextID,conID,count=0,dateToDownload=0):
     def __init__(self):
-        self.nextID:int=0
+        #self.nextID:int=0
         self.startTime=dt.datetime.today() #to keep track when start downloading to wait 10 min
         self.conID:int=0
         self.oneStock:OneStock=OneStock(None)
-        self.oneContract=''
-        self.count:int=0
+        self.oneContract:OneContract=''
+        self.count:int=0 #this count is use on total history to download and will not allow more than 60
         self.dateToDownload:str=''# from where to start to download
         self.whatToDownload:str=''
         self.newestForNewHist:str='' # when start a new history download this is the newest where we suppose to stop
         self.lastDateDownload:str='' #this will be use only for newHist to be able to minimize the downloading
 
-'''
-class toTws:
-    def __init__(self,purp,nextID=-1,obj=None):
-        self.purpose=purp
-        self.obj=obj
-        self.nextID = nextID
-
-class toTWSHist:
-    def __init__(self,datetime=None,ct:OneContract=None):
-        self.datetime = datetime
-        self.contract = ct
-
-class fromTws:
-    #if nextID is -1 than a next id need to be generated
-    def __init__(self,purp,nextID=-1,obj=None):
-        self.purpose=purp
-        self.nextID=nextID
-        self.obj=obj
-
-
-class fromTwsHist:
-    def __init__(self,reqID,oneStock:OneStock=None
-                 ,ct:OneContract=None
-                 ,startHist=None
-                 ,endHist=None):
-        self.reqID=reqID
-        self.oneStock:OneStock=oneStock
-        self.contract = ct
-        self.startHist=startHist
-        self.endHist = endHist
-
-class toTWSMarketData:
-    def __init__(self,ct:OneContract,genericTickList="233"):
-        self.contract=ct
-        self.genericTickList=genericTickList
-        pass
-
-'''

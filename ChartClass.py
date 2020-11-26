@@ -101,7 +101,8 @@ class UtilityChart:
         sel_list = [all_items[item] for item in selection]
         dash=sel_list[0].find('-')
         print(sel_list[0][0:dash])
-        stock='T'+sel_list[0][0:dash]
+        #stock='T'+sel_list[0][0:dash]
+        stock = sel_list[0][0:dash]
         self.data = self.gui.dbLite.getOneStock(stock)
         self.mainChart = Chart(self.data, self.mycanvas)
         #we have a better name than first

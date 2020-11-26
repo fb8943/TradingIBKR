@@ -2,7 +2,7 @@ from ibapi import (decoder, reader, comm)
 from ibapi.client import EClient
 from ibapi.common import *
 from ibapi.utils import BadMessage
-
+import time
 import queue
 import traceback
 
@@ -24,15 +24,17 @@ class TestClient(EClient):
             else:
                 gg = "false"
 
-            print("self.done-" + g+"-"+gg)
+            print("1111111111111self.done-" + g+"-"+gg)
 
             #while not self.done and not self.msg_queue.empty():
             while not self.done:
+                #print("self.done",self.done)
+                #time.sleep(1)
                 try:
                     try:
                         # Hook to process messages/events from other sources.
                         self.onLoopIteration() # this will be called on AppClass
-                        self.onLoopIteration2()  # this will be called on AppClass
+                       # self.onLoopIteration2()  # this will be called on AppClass
                         text = self.msg_queue.get(block=True, timeout=0.2)
                         if len(text) > MAX_MSG_LEN:
                             print("len text too much Error1 ")
@@ -55,11 +57,14 @@ class TestClient(EClient):
                 except BadMessage:
                     print("BadMessage")
                     self.conn.disconnect()
+                    print("here i am disconect in ClientClass1")
                 except Exception:
                     print(traceback.format_exc())
                     print("conn:%d queue.sz:%d",self.isConnected(),self.msg_queue.qsize())
         finally:
             self.disconnect()
+            print("here i am disconect in ClientClass2")
+
 
         def onLoopIteration(self):
             pass
