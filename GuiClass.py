@@ -33,7 +33,7 @@ class Gui:
         #self.downloadLimit=DownloadLimit(self.dlQueToLimit,self.dlQueFromLimit,self.toTws, self.toGui)
         self.downloadLimit = DownloadLimit(self.dlQueToLimit, self.toTws, self.toGui)
         self.downloadLimit.start()
-        self.dbLite=None
+        self.dbLite=DB("")
 
     def geGui2tws(self):
         print('here')
@@ -90,7 +90,7 @@ class Gui:
 
         self.eLoadDB = tk.Entry(self.tab_connect, width=30)
         self.eLoadDB.place(x=70, y=90)
-        self.nameDB = "gigi.db" #default name
+        self.nameDB = "C:\\Users\\fb894\\PycharmProjects\\Test\\gigi.db" #default name
         self.eLoadDB.insert(0, self.nameDB)
 
         self.bchooseDB = tk.Button(self.tab_connect, text="Choose DB", command=self.choosedb)
@@ -169,7 +169,7 @@ class Gui:
 
     def updatePanels(self,item):
         #print('updatePanel ',item[0],item[1],item[2],item[3])
-        self.watch.Panels[item[0]].updatePanel(item[1],item[2],item[3])
+        self.watch.Panels[item[0]].updatePanel(item[1])
 
     def load1min(self,item):
         if self.dbLite==None:
@@ -184,7 +184,7 @@ class Gui:
 
         #let's verify if we really need data
         dt = self.dbLite.getMaxDateTime(item.contractID)
-
+        print('load1min in gui',dt)
         FMT1 = '%Y%m%d  %H:%M:%S'
         s1 = datetime.datetime.strftime(datetime.datetime.now(), FMT1)
 
@@ -197,17 +197,28 @@ class Gui:
             print('load1min', 'we have the data load and go level2')
             #let's download only 3000 bars
 
-            oneMin:OneStock=self.dbLite.getOneStock2(item.contractID,3000)
-            panda1min=self.dbLite.getOneStockPandas(item.contractID,3000)
+            #oneMin:OneStock=self.dbLite.getOneStock2(item.contractID,3000)
+            #panda1min=self.dbLite.getOneStockPandas(item.contractID,3000)
+            if item.sectype=='FUT':
+                RTH='NO'
+            else:
+                RTH='YES'
+            print('security type',item.sectype)
+            dic1min=self.dbLite.getOneStockDic(item.contractID,3000,RTH)
 
-            mes=toMessage('data1min',[item.contractID,oneMin,panda1min])
+            #mes=toMessage('data1min',[item.contractID,oneMin,panda1min])
+            mes = toMessage('data1min', [item.contractID, dic1min])
             self.toWat.put(mes)
+
             time.sleep(1)  # not sure if necessary
             self.watch.Panels[item.contractID].panelQue.put(toMessage('level2'))
 
     def run(self):
+        print("init_gui")
         self.init_gui()
+        print("init_gui2")
         self.root.wm_protocol("WM_DELETE_WINDOW", self.ex)
+        print("init_gui3")
         self.root.mainloop()
 
     def ex(self):
@@ -234,8 +245,6 @@ class Gui:
         to_tws = toMessage("disconnect", None)
         self.toTws.put(to_tws)
         print('i disconect')
-
-
 
 
     def loaddb(self):

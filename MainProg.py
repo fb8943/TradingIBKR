@@ -39,8 +39,7 @@ def action():
 
 
 def main():
-    disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-           "cucu","bubu")
+
     toTws = mp.Queue()
     toGui = mp.Queue()
     toWat = mp.Queue()

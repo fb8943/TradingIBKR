@@ -17,7 +17,8 @@ class toMessage2:
         self.obj=obj
 
 class OneContract:
-    def __init__(self, currency, symbol, expire, exchange, sectype, barsize, whattoshow, active, conID=0):
+    def __init__(self, currency, symbol, expire, exchange, sectype, barsize,\
+                 whattoshow, active,ordersize,stopsize,orderextra, conID=0):
         self.currency = currency
         self.symbol = symbol
         self.expire = expire
@@ -27,9 +28,15 @@ class OneContract:
         self.whattoshow = whattoshow
         self.active = active
         self.contractID = conID  # this value will change once enter in DB
+        self.ordersize=ordersize
+        self.stopsize=stopsize
+        self.orderextra=orderextra #not in use
 
     def getValues(self):
-        return "'" + self.currency + "','" + self.symbol + "','" + self.expire + "','" + self.exchange + "','" + self.sectype + "','" + self.barsize + "','" + self.whattoshow + "','" + self.active + "'"
+        return "'" + self.currency + "','" + self.symbol + "','" + \
+               self.expire + "','" + self.exchange + "','" + self.sectype +\
+               "','" + self.barsize + "','" + self.whattoshow + "','" + self.active \
+               + "','" + self.ordersize +"','" + self.stopsize +"','" + self.orderextra+"'"
 
 #this class is equivalent of BarData class from common.py
 class OneTick:
@@ -67,7 +74,7 @@ class OneStock:
         #self.bars: BarData = []
         #self.bars5sec:OneTick=[]
         self.bars5sec: BarData = []
-        self.bars1min=[] #this are BarData
+        self.bars1min=[] #this are BarData and will be used for download also
         self.bars5min= []
         self.bars15min = []
         self.bars10min = []
@@ -80,14 +87,46 @@ class OneStock:
         self.panda1min=None
         self.panda5min=pd.DataFrame()
         self.panda30min=pd.DataFrame()
+        #self.order={'Position':0,'OrderSize':0,'TimeFrame':'','StopSize':0}
+        self.order = {'Position': 0}
+
+        self.data={'DTbT':[],'OTbT':[],'HTbT':[],'LTbT':[],'CTbT':[],
+                   'D5sec':[],'O5sec':[],'H5sec':[],'L5sec':[],'C5sec':[],'V5sec':[],'N5sec':[],'A5sec':[],
+                   'D5min':[],'O5min':[],'H5min':[],'L5min':[],'C5min':[],'V5min':[],'N5min':[],'A5min':[],
+                   'D1min':[],'O1min':[],'H1min':[],'L1min':[],'C1min':[],'V1min':[],'N1min':[],'A1min':[],
+                   'D30min':[],'O30min':[],'H30min':[],'L30min':[],'C30min':[],'V30min':[],'N30min':[],'A30min':[]}
 
         self.is5secDownloaded=False
         self.is1minDownloaded=False
         self.is1minUpToDate=False
 
-
+    def addBarToData(self,timeFrame,oneBar:BarData):
+        if timeFrame in ['5sec','1min','5min','10min','15min','30min','1h','2h','4h','1day','1week']:
+            self.data['D'+timeFrame].append(oneBar.date)
+            self.data['O' + timeFrame].append(oneBar.open)
+            self.data['H' + timeFrame].append(oneBar.high)
+            self.data['L' + timeFrame].append(oneBar.low)
+            self.data['C' + timeFrame].append(oneBar.close)
+            self.data['V' + timeFrame].append(oneBar.volume)
+            self.data['N' + timeFrame].append(oneBar.barCount)
+            self.data['A' + timeFrame].append(oneBar.average)
+        else:
+            print('addBarToData time frame is not ok')
        # if self.tickid==0:
        #     self.tickid=self.contract.contractID
+
+    def insertBarToData(self,timeFrame,oneBar:BarData,pos):
+        if timeFrame in ['5sec','1min','5min','10min','15min','30min','1h','2h','4h','1day','1week']:
+            self.data['D'+timeFrame].insert(pos,oneBar.date)
+            self.data['O' + timeFrame].insert(pos,oneBar.open)
+            self.data['H' + timeFrame].insert(pos,oneBar.high)
+            self.data['L' + timeFrame].insert(pos,oneBar.low)
+            self.data['C' + timeFrame].insert(pos,oneBar.close)
+            self.data['V' + timeFrame].insert(pos,oneBar.volume)
+            self.data['N' + timeFrame].insert(pos,oneBar.barCount)
+            self.data['A' + timeFrame].insert(pos,oneBar.average)
+        else:
+            print('addBarToData time frame is not ok')
 
 
     #  def getOneBar(bar:BarData):
@@ -120,6 +159,7 @@ class PanelEngine(threading.Thread):
         self.gui=gui
         self.level=0
         self.item=item
+
 
     def run(self):
         stop = False
@@ -167,16 +207,18 @@ class OnePanel:
     width=None
     myFont = None
 
-    def __init__(self,x,y,gui):
+    def __init__(self,x,y,gui,timeframe):
         self.x=x
         self.y=y
         #self.panel=None #this will hold the panel
         #self.tickID=None
-        OnePanel.myFont=font.Font(family='Courier', size=9)
+        OnePanel.myFont=font.Font(family='Courier', size=12)
         self.item=None
         self.panelQue = queue.Queue()
 
         self.gui=gui
+        self.timeframe=timeframe
+        self.labels={}
 
     def create(self,item:OneContract):
         self.panel=tk.PanedWindow(OnePanel.master,height=OnePanel.height,width=OnePanel.width)
@@ -187,30 +229,42 @@ class OnePanel:
         print('create in panel',item.contractID)
         self.panelEngine = PanelEngine(self.panelQue, self.gui,self.item)
 
+        width=12
+        height=1
         self.bStartWatch = tk.Button(self.panel, text='Start', command=lambda: self.Start(self.item.symbol,self.item.contractID))
         self.bStartWatch['font']=self.myFont
         self.bStartWatch.pack(side='left', padx=2)
 
-        self.idLabel=tk.Label(self.panel,text=self.item.symbol, bg='yellow',width = 8)
+        self.bStartTrade = tk.Button(self.panel, text='TradeOFF', command=lambda: self.Trade(self.item.symbol,self.item.contractID))
+        self.bStartTrade['font']=self.myFont
+        self.bStartTrade.pack(side='left', padx=2)
+
+        self.idLabel=tk.Label(self.panel,text=self.item.symbol, bg='yellow',width = width-3,height=height)
         self.idLabel['font'] = OnePanel.myFont
         self.idLabel.pack(side='left', padx=2)
 
-        self.lb30min = tk.Label(self.panel, text='30min', bg='red', width=8)
-        self.lb30min['font'] = OnePanel.myFont
-        self.lb30min.pack(side='left', padx=2)
+        for key in self.timeframe:
+            self.labels[key] = tk.Label(self.panel, text=key, bg='red', width=width, height=height)
+            self.labels[key]['font'] = OnePanel.myFont
+            self.labels[key].pack(side='left', padx=2)
 
-        self.lb5min = tk.Label(self.panel, text='5min', bg='red', width=8)
-        self.lb5min['font'] = OnePanel.myFont
-        self.lb5min.pack(side='left', padx=2)
+        return
 
-        self.lb1min = tk.Label(self.panel, text='1min', bg='red', width=8)
-        self.lb1min['font'] = OnePanel.myFont
-        self.lb1min.pack(side='left', padx=2)
+    def updatePanel(self, timeframearray):
+        for key,val in timeframearray.items():
+            self.labels[key]['text']=val[0]
+            self.labels[key]['bg']=val[1]
 
-    def updatePanel(self,text30min, text5min,text1min):
-        self.lb1min['text']=text1min
-        self.lb5min['text'] = text5min
-        self.lb30min['text'] = text30min
+    def Trade(self,symbol,tickID):
+        if self.bStartTrade['text']=='TradeON':
+            self.bStartTrade['text']='TradeOFF'
+            self.bstarttrade=False
+            self.bStartTrade['bg']='yellow'
+
+        elif self.bStartTrade['text']=='TradeOFF':
+            self.bStartTrade['text']='TradeON'
+            self.bstarttrade=True
+            self.bStartTrade['bg']='cyan'
 
 
     def Start(self,symbol,tickID):

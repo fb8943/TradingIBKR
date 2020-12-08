@@ -1,6 +1,9 @@
 import sys
 from inspect import getframeinfo, currentframe
 
+from ibapi.contract import Contract
+from ibapi.order import Order
+
 from Source.OnesClasses import OneContract, OneStock
 import tkinter as tk
 from tkinter import ttk
@@ -67,6 +70,27 @@ class UtilityContract:
         self.cbActive['values'] = ("Yes", "No")
         self.cbActive.place(x=100, y=260)
 
+
+        ordersize = tk.Label(gui.tab_contracts, text="OrderSize:", relief="flat")
+        ordersize.place(x=10, y=290)
+        self.eOrderSize = tk.Entry(gui.tab_contracts, width=10)
+        self.eOrderSize.place(x=100, y=290)
+
+        stopsize = tk.Label(gui.tab_contracts, text="StopSize:", relief="flat")
+        stopsize.place(x=10, y=320)
+        self.eStopSize = tk.Entry(gui.tab_contracts, width=10)
+        self.eStopSize.place(x=100, y=320)
+
+        orderextra = tk.Label(gui.tab_contracts, text="OrderExtra:", relief="flat")
+        orderextra.place(x=10, y=350)
+        self.eOrderExtra = tk.Entry(gui.tab_contracts, width=10)
+        self.eOrderExtra.place(x=100, y=350)
+
+
+
+
+
+
         self.create_contracts_tree()
 
     def contractsButtons(self):
@@ -98,7 +122,7 @@ class UtilityContract:
 
             self.bstartWatch5Sec = tk.Button(paneBtnContracts, text="StartWatch5Sec", command=self.startWatch5Sec)
             self.bstartWatch5Sec.pack(side='left')
-            self.bstopWatch5Sec = tk.Button(paneBtnContracts, text="StopWatch5Sec", command=self.stopWatch5Sec)
+            self.bstopWatch5Sec = tk.Button(paneBtnContracts, text="Place order", command=self.placeOrder)
             self.bstopWatch5Sec.pack(side='left')
 
     def cancelmarketdata(self):
@@ -153,8 +177,8 @@ class UtilityContract:
         else:
             conID = self.treeContracts.item(item)['values'][0]
             ct = OneContract(self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                             self.cbSecType.get(), self.cbBarSize.get(),
-                             self.cbWhatToShow.get(), self.cbActive.get(), conID)
+                             self.cbSecType.get(), self.cbBarSize.get(),self.cbWhatToShow.get(), self.cbActive.get(),
+                             self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get(), conID)
             #toTWS = self.gui.toTws('histnew', ct)
             toTWS = toMessage('histnew', ct)
             # print(self.dbLite.getDateTimeToDownload())
@@ -169,8 +193,8 @@ class UtilityContract:
         else:
             conID = self.treeContracts.item(item)['values'][0]
             ct = OneContract(self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                             self.cbSecType.get(), self.cbBarSize.get(),
-                             self.cbWhatToShow.get(), self.cbActive.get(), conID)
+                             self.cbSecType.get(), self.cbBarSize.get(),self.cbWhatToShow.get(), self.cbActive.get(),
+                             self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get(),conID)
             #toTWS = self.gui.toTws('histold', ct)
             toTWS = toMessage('histold', ct)
             # print(self.dbLite.getDateTimeToDownload())
@@ -202,8 +226,8 @@ class UtilityContract:
         else:
             conID = self.treeContracts.item(item)['values'][0]
             ct = OneContract(self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                             self.cbSecType.get(), self.cbBarSize.get(),
-                             self.cbWhatToShow.get(), self.cbActive.get(), conID)
+                             self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.cbActive.get(),
+                             self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get(),conID)
             #toTWS = self.gui.toTws('watchStart', ct)
             toTWS = toMessage('watchStart', ct)
             # print(self.dbLite.getDateTimeToDownload())
@@ -216,10 +240,10 @@ class UtilityContract:
         else:
             conID = self.treeContracts.item(item)['values'][0]
             ct = OneContract(self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                             self.cbSecType.get(), self.cbBarSize.get(),
-                             self.cbWhatToShow.get(), self.cbActive.get(), conID)
+                             self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.cbActive.get(),
+                             self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get(),conID)
             #toTWS = self.gui.toTws('stopStart', ct)
-            toTWS = toMessage('stopStart', ct)
+            toTWS = toMessage('watchStop', ct)
             # print(self.dbLite.getDateTimeToDownload())
             self.gui.toTws.put(toTWS)
 
@@ -234,40 +258,63 @@ class UtilityContract:
 
             #print("here  ",self.cbWhatToShow.get())
             ct = OneContract(self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                             self.cbSecType.get(), self.cbBarSize.get(),
-                             self.cbWhatToShow.get(), self.cbActive.get(), conID)
+                             self.cbSecType.get(), self.cbBarSize.get(),self.cbWhatToShow.get(), self.cbActive.get(),
+                             self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get(),conID)
             #toTWS = self.gui.toTws('watchStart', ct)
             toTWS = toMessage('Start5SecWatch', ct)
             # print(self.dbLite.getDateTimeToDownload())
             self.gui.toTws.put(toTWS)
 
-    def stopWatch5Sec(self):
-        print("this is disable")
-        return
+    def placeOrder(self):
+        print("this place order")
         item = self.treeContracts.selection()
         if not item:
             print("nothing selected")
         else:
-            conID = self.treeContracts.item(item)['values'][0]
-            ct = OneContract(self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                             self.cbSecType.get(), self.cbBarSize.get(),
-                             self.cbWhatToShow.get(), self.cbActive.get(), conID)
-            #toTWS = self.gui.toTws('stopStart', ct)
-            toTWS = toMessage('Stop5SecWatch', ct)
+            val = (item[0], self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
+                   self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.cbActive.get(),
+                   self.eOrderSize.get(), self.eStopSize.get(), self.eOrderExtra.get())
+            print(val)
+            contract = Contract()
+            contract.symbol = self.eSymbol.get()
+            contract.secType = self.cbSecType.get()
+            contract.currency = self.eCurrency.get()
+            contract.exchange = self.cbExchange.get()
+            contract.lastTradeDateOrContractMonth=self.eExpire.get()
+            print(contract.symbol,contract.secType,contract.currency,contract.exchange,contract.lastTradeDateOrContractMonth)
+
+            order = Order()
+            order.action = "BUY"
+            #order.orderType = "LMT"
+            order.orderType = "MKT"
+            order.totalQuantity = 1
+            #order.lmtPrice = 100
+            #order.account="U146642"
+
+            print(int(item[0]))
+
+            toTWS = toMessage('PlaceOrder', [int(item[0]),contract,order])
             # print(self.dbLite.getDateTimeToDownload())
             self.gui.toTws.put(toTWS)
+
+        return
+
 
 
     def addContract(self):
 
-        oc=OneContract(self.eCurrency.get(),self.eSymbol.get(),self.eExpire.get(),self.cbExchange.get(),self.cbSecType.get(),self.cbBarSize.get(),self.cbWhatToShow.get(),self.active.get())
+        oc=OneContract(self.eCurrency.get(),self.eSymbol.get(),self.eExpire.get(),self.cbExchange.get(),self.cbSecType.get(),
+                       self.cbBarSize.get(),self.cbWhatToShow.get(),self.active.get(),
+                       self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get())
         lastrow=self.gui.dbLite.addContract(oc)
-        val = (lastrow, self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(), self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.active.get())
+        val = (lastrow, self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(), self.cbSecType.get(),
+               self.cbBarSize.get(), self.cbWhatToShow.get(), self.active.get()
+               ,self.eOrderSize.get(),self.eStopSize.get(),self.eOrderExtra.get())
         self.treeContracts.insert("", "end", lastrow, text="", values=val)
 
     def create_contracts_tree(self):
             self.paneTreeContracts = tk.PanedWindow(self.gui.tab_contracts, height="300", width="700")
-            self.paneTreeContracts.place(x=10, y=300)
+            self.paneTreeContracts.place(x=10, y=380)
 
             self.treeContracts = ttk.Treeview(self.paneTreeContracts, height="7")
             self.treeContracts.bind("<ButtonRelease-1>", self.treeContractsClick)
@@ -281,7 +328,7 @@ class UtilityContract:
             # Configuring treeview
             self.treeContracts.configure(xscrollcommand=verscrlbar.set)
             # Defining number of columns
-            self.treeContracts["columns"] = ("0", "1", "2", "3", "4", "5", "6", "7", "8")
+            self.treeContracts["columns"] = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11")
             # Defining heading
             self.treeContracts['show'] = 'headings'
             # Assigning the width and anchor to  the
@@ -294,7 +341,10 @@ class UtilityContract:
             self.treeContracts.column("5", width=50, anchor='se')
             self.treeContracts.column("6", width=60, anchor='se')
             self.treeContracts.column("7", width=90, anchor='se')
-            self.treeContracts.column("8", width=40, anchor='se')
+            self.treeContracts.column("8", width=50, anchor='se')
+            self.treeContracts.column("9", width=60, anchor='se')
+            self.treeContracts.column("10", width=60, anchor='se')
+            self.treeContracts.column("11", width=60, anchor='se')
             # Assigning the heading names to the
             # respective columns
             # currency, exchange, expire, primaryExch, secType, barSize, whatToShow
@@ -307,15 +357,18 @@ class UtilityContract:
             self.treeContracts.heading("6", text="BarSize")
             self.treeContracts.heading("7", text="WhatToShow")
             self.treeContracts.heading("8", text="Active")
+            self.treeContracts.heading("9", text="OrderSize")
+            self.treeContracts.heading("10", text="StopSize")
+            self.treeContracts.heading("11", text="OrderExtra")
 
     def treeContractsClick(self, event):
             item = self.treeContracts.selection()
-            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                   "you clicked on", self.treeContracts.item(item)['values'])
+
             val = self.treeContracts.item(item)['values']
             i = 1
-            for item in (self.eCurrency, self.eSymbol, self.eExpire, self.cbExchange, self.cbSecType, self.cbBarSize,
-                         self.cbWhatToShow, self.cbActive):
+            for item in (self.eCurrency, self.eSymbol, self.eExpire, self.cbExchange, self.cbSecType,
+                         self.cbBarSize, self.cbWhatToShow, self.cbActive,
+                         self.eOrderSize, self.eStopSize,self.eOrderExtra):
                 item.delete(0, "end")
                 item.insert(0, val[i])
                 i = i + 1
@@ -330,7 +383,7 @@ class UtilityContract:
                    it[0])
             self.gui.dbLite.deleteContract(it[0])
             for item in (self.eCurrency, self.eSymbol, self.eExpire, self.cbExchange, self.cbSecType, self.cbBarSize,
-                         self.cbWhatToShow, self.cbActive):
+                         self.cbWhatToShow, self.cbActive,self.eOrderSize, self.eStopSize,self.eOrderExtra):
                 item.delete(0, "end")
 
     def updateContract(self):
@@ -338,14 +391,10 @@ class UtilityContract:
         if not item:
             print("nothing selected")
         else:
-            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                   item[0])
             val = (item[0], self.eCurrency.get(), self.eSymbol.get(), self.eExpire.get(), self.cbExchange.get(),
-                   self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.cbActive.get())
+                   self.cbSecType.get(), self.cbBarSize.get(), self.cbWhatToShow.get(), self.cbActive.get(),
+                   self.eOrderSize.get(), self.eStopSize.get(),self.eOrderExtra.get())
             self.treeContracts.item(item, values=val)
             # self.treeContracts.delete(item)
             # self.treeContracts.insert("", 0, val[0], text="", values=val)
             self.gui.dbLite.Update(val)
-            # self.treeContracts.item(item,"values"=val)
-            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                   val)

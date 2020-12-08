@@ -6,9 +6,11 @@ import sys
 import time
 from inspect import getframeinfo, currentframe
 
+from ibapi.order import Order
+from ibapi.order_state import OrderState
 from ibapi.wrapper import EWrapper, TickType, TickAttribLast, TickAttribBidAsk
 from ibapi.contract import Contract
-from ibapi.common import BarData, TickerId,TickAttrib
+from ibapi.common import BarData, TickerId, TickAttrib, OrderId
 
 #from config import config
 #from logutils import init_logger
@@ -67,7 +69,13 @@ class TestApp(TestClient, EWrapper):
         #self.stepSize={'1 sec':'1800 S','5 sec':'3600 S','10 secs':'14400 S','30 secs':'28800 S','1 min':'2 D','30 mins':'1 M','1 day':'1 Y'}
 
         #self.oneStock=OneStock(None)
-        self.downloadHistInfo={}
+        self.downloadHistInfo={} #will keep the donwload info
+        self.nextIDconID={}#to be able to translate nextID to conID
+        #self.stop5secnextID={}#will keep the nextID to be able to stop 5 sec
+        self.stop_reqTickByTickData={}#will keep the nextID to be able to stop the MarketData
+        self.stop_reqRealTimeBars={} #stop 5 sec bars
+
+        self.realTickData={} #will keep the data
 
     @property
     def nextId(self):
@@ -164,7 +172,7 @@ class TestApp(TestClient, EWrapper):
                 
             elif msg.purpose=='watchStart':
                 self.watchStart(msg)
-            elif msg.purpose=='stopStart':
+            elif msg.purpose=='watchStop':
                 self.watchStop(msg)
 
             elif msg.purpose=='Start5SecWatch':
@@ -176,12 +184,17 @@ class TestApp(TestClient, EWrapper):
                 self.cancelMktData(self.idmarketdata)
 
             elif msg.purpose=='connect':
-                self.connect('127.0.0.1', 7496, 1)
+                #self.connect('127.0.0.1', 7496, 1) #live
+                self.connect('127.0.0.1', 7497, 1) #paper
 
             elif msg.purpose=='disconnect':
                 self.disconnect()
-
-
+            elif msg.purpose=='PlaceOrder':
+                #self.cancelOrder(msg.obj[0])
+                x=self.nextId
+                print('order id=',x)
+                self.placeOrder(x,msg.obj[1],msg.obj[2])
+                #self.cancelOrder(58)
             elif msg.purpose == 'exit':
                 self.exit()
             elif msg.purpose == 'database':
@@ -217,85 +230,73 @@ class TestApp(TestClient, EWrapper):
 
         ct = makeSimpleContract(oneContract)
 
-        nextID=oneContract.contractID
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               ' here is hist new nextID ', nextID)
+        nextID=self.nextId
+        #nextID=oneContract.contractID
+        self.nextIDconID[nextID]=oneContract.contractID
+        conID=oneContract.contractID
+        #print("nextID,contractid",nextID,oneContract.contractID)
 
         if oneContract.sectype=='FUT':
-            self.downloadHistInfo[nextID].newestForNewHist=downloadHist.getStartFutureDate(oneContract.symbol,oneContract.expire)
+            self.downloadHistInfo[conID].newestForNewHist=downloadHist.getStartFutureDate(oneContract.symbol,oneContract.expire)
 
-        if self.downloadHistInfo[nextID].dateToDownload=='':
-            self.downloadHistInfo[nextID].dateToDownload=self.dbLite.getMinDateTime(oneContract.contractID)
+        if self.downloadHistInfo[conID].dateToDownload=='':
+            self.downloadHistInfo[conID].dateToDownload=self.dbLite.getMinDateTime(oneContract.contractID)
 
-        if self.downloadHistInfo[nextID].oneContract=='':
-            self.downloadHistInfo[nextID].oneContract=oneContract
+        if self.downloadHistInfo[conID].oneContract=='':
+            self.downloadHistInfo[conID].oneContract=oneContract
 
-        if self.downloadHistInfo[nextID].count==0:
+        if self.downloadHistInfo[conID].count==0:
             #self.downloadHistInfo[nextID].nextID=nextID
-            self.downloadHistInfo[nextID].conID=oneContract.contractID
+            self.downloadHistInfo[conID].conID=oneContract.contractID
         if oneContract.barsize=='5 secs':
             rth=1
         else:
             rth=0
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               oneContract.barsize,' rth is :',rth)
 
-        self.reqHistoricalData(nextID, ct, self.downloadHistInfo[nextID].dateToDownload, getStepSize(oneContract.barsize),
+        self.reqHistoricalData(nextID, ct, self.downloadHistInfo[conID].dateToDownload, getStepSize(oneContract.barsize),
                                oneContract.barsize, oneContract.whattoshow, rth, 1, False, [])
-        '''self.reqHistoricalData(self.nextId,
-                                               makeSimpleContract(),
-                                               datetime.datetime.today().strftime("%Y%m%d %H:%M:%S %Z"),  # endDateTime,
-                                               "1 M",
-                                               "1 day",
-                                               "TRADES",
-                                               1,
-                                               1,
-                                               False,
-                                               []
-                                               )'''
-        # TODO Add message processing here
 
     #this assume we don't have anything in the database
     def getHistNew(self, oneContract:OneContract):
         #DownloadLimit.limit() #to stop the download
 
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'start new hist for:',oneContract.symbol)
+
         ct = makeSimpleContract(oneContract)
 
-        #nextID=self.nextId
-        nextID=oneContract.contractID
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               ' here is nextID ', nextID)
+        nextID=self.nextId
+        #nextID=oneContract.contractID
+        self.nextIDconID[nextID]=oneContract.contractID
+        conID=oneContract.contractID
+        #print("nextID,contractid",nextID,oneContract.contractID)
+
 
         #if we are first time take now moment
         #if (self.downloadHistInfo.dateToDownload == '') and (self.downloadHistInfo.newestForNewHist==''):
-        if (self.downloadHistInfo[nextID].dateToDownload == '') and (self.downloadHistInfo[nextID].newestForNewHist == ''):
-            self.downloadHistInfo[nextID].newestForNewHist=self.dbLite.getMaxDateTime(oneContract.contractID)
+        if (self.downloadHistInfo[conID].dateToDownload == '') and (self.downloadHistInfo[conID].newestForNewHist == ''):
+            self.downloadHistInfo[conID].newestForNewHist=self.dbLite.getMaxDateTime(conID)
 
-            if self.downloadHistInfo[nextID].newestForNewHist=='': #we should run history
-                disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                       'You need to use history old')
+            if self.downloadHistInfo[conID].newestForNewHist=='' or self.downloadHistInfo[conID].newestForNewHist==None: #we should run history
+                print("use historyold")
                 return
             #self.downloadHistInfo.dateToDownload=datetime.datetime.today().strftime("%Y%m%d %H:%M:%S %Z")
-            self.downloadHistInfo[nextID].dateToDownload = datetime.datetime.today().strftime("%Y%m%d %H:%M:%S")
+            self.downloadHistInfo[conID].dateToDownload = datetime.datetime.today().strftime("%Y%m%d %H:%M:%S")
 
 
-        if self.downloadHistInfo[nextID].oneContract=='':
-            self.downloadHistInfo[nextID].oneContract=oneContract
+        if self.downloadHistInfo[conID].oneContract=='':
+            self.downloadHistInfo[conID].oneContract=oneContract
             #self.downloadHistInfo[nextID].whatToDownload = 'histnew'
 
 
 
-        if self.downloadHistInfo[nextID].count==0:
+        if self.downloadHistInfo[conID].count==0:
             #self.downloadHistInfo[nextID].nextID=nextID
-            self.downloadHistInfo[nextID].conID=oneContract.contractID
+            self.downloadHistInfo[conID].conID=oneContract.contractID
 
-        if (self.downloadHistInfo[nextID].lastDateDownload==''):
-            self.downloadHistInfo[nextID].lastDateDownload = self.dbLite.getMaxDateTime(oneContract.contractID)
+        if (self.downloadHistInfo[conID].lastDateDownload==''):
+            self.downloadHistInfo[conID].lastDateDownload = self.dbLite.getMaxDateTime(conID)
 
         #print(self.downloadHistInfo.lastDateDownload)
-        stepSize=getStepSize(oneContract.barsize,self.downloadHistInfo[nextID].dateToDownload,self.downloadHistInfo[nextID].lastDateDownload)
+        stepSize=getStepSize(oneContract.barsize,self.downloadHistInfo[conID].dateToDownload,self.downloadHistInfo[conID].lastDateDownload)
         #print(stepSize)
 
         if oneContract.barsize == '5 secs':
@@ -304,14 +305,14 @@ class TestApp(TestClient, EWrapper):
             rth = 0
 
         #in case we 5SecOneTime we need to go outside market hour and bar size must be 5 sec
-        if self.downloadHistInfo[nextID].whatToDownload=='histnew5secOneTime':
+        if self.downloadHistInfo[conID].whatToDownload=='histnew5secOneTime':
             oneContract.barsize = '5 secs'
             rth=0
-            stepSize = getStepSize(oneContract.barsize, self.downloadHistInfo[nextID].dateToDownload,
-                                   self.downloadHistInfo[nextID].lastDateDownload)
+            stepSize = getStepSize(oneContract.barsize, self.downloadHistInfo[conID].dateToDownload,
+                                   self.downloadHistInfo[conID].lastDateDownload)
 
 
-        self.reqHistoricalData(nextID, ct, self.downloadHistInfo[nextID].dateToDownload, stepSize,
+        self.reqHistoricalData(nextID, ct, self.downloadHistInfo[conID].dateToDownload, stepSize,
                                oneContract.barsize, oneContract.whattoshow, rth, 1, False, [])
 
     def _write(self, msg):
@@ -326,33 +327,97 @@ class TestApp(TestClient, EWrapper):
             print(msg.obj.contractID, '----', ct)
             # self.reqMktData(msg.obj.contractID, ct, "233", False, False, [])
             # self.reqTickByTickData(msg.obj.contractID, ct, "Last", 0, True)
-            self.reqTickByTickData(msg.obj.contractID, ct, "BidAsk", 0, True)
-            pass
+
+            nextID = self.nextId
+            # nextID=oneContract.contractID
+            self.nextIDconID[nextID] = msg.obj.contractID
+
+
+            if msg.obj.contractID in self.stop_reqTickByTickData:
+                print(' Error watchStart - we are already subscribed to ',msg.obj.contractID)
+                return
+            else:
+                self.realTickData[msg.obj.contractID]=[]
+                self.stop_reqTickByTickData[msg.obj.contractID] = nextID
+                self.reqTickByTickData(nextID, ct, "BidAsk", 0, True)
+                #self.reqTickByTickData(nextID, ct, "Last", 0, True)
+
 
     def watchStop(self, msg):
-            ct = makeSimpleContract(msg.obj)
+            #ct = makeSimpleContract(msg.obj)
             # self.cancelMktData(msg.obj.contractID)
-            self.cancelTickByTickData(msg.obj.contractID)
+
+            self.cancelTickByTickData(self.stop_reqTickByTickData[msg.obj.contractID])
+            self.stop_reqTickByTickData.pop(msg.obj.contractID)#we need to remove it
+            #let's print before
+            self.realTickData_writeToAFile(msg.obj.contractID,1)
+            self.realTickData.pop(msg.obj.contractID)
+
+    def realTickData_writeToAFile(self,conID,interval=1):
+        #interval are in minute
+        #for item in self.realTickData[conID]:
+        #    print(item)
+        #return
+
+        res=[]
+        res.append([self.realTickData[conID][0][0],self.realTickData[conID][0][1],self.realTickData[conID][0][2],
+        self.realTickData[conID][0][1],self.realTickData[conID][0][2]])
+        #date,open,high,low,close - close will be the last high low=open and close=high
+        #i=0
+        for item in self.realTickData[conID]:
+            #print(item[0][12:14],res[-1][0][12:14])
+            if item[0][12:14]==res[-1][0][12:14]:
+                #we are in the same minute
+                res[-1][2] = max(res[-1][2],item[2]) #high
+                res[-1][3] = min(res[-1][3], item[1]) #low
+                res[-1][4] = item[2] #close will be the last high
+            else:
+                print('close at',res[-1][0],' is ',res[-1][4])
+                #add for a new minute
+                item[0]=item[0][:15]+"XX"
+                res.append([item[0],item[1],item[2],item[1],item[2]])#date,open,high,low,close
+
+
+        file1 = open("tick"+str(conID)+".txt", "a")  # append mode
+        for item in res:
+            file1.write(item[0]+","+str(item[1])+","+str(item[2])+","+str(item[3])+","+str(item[3])+"\n")
+        file1.write("\n")
+
+        for item in self.realTickData[conID]:
+            file1.write(item[0]+","+str(item[1])+","+str(item[2])+"\n")
+        file1.close()
+
+        #write to a file
 
     def watchStart5Sec(self, msg):
             ct = makeSimpleContract(msg.obj)
             wtsh=msg.obj.whattoshow
             if wtsh != 'TRADES' and wtsh !="MIDPOINT":
                 wtsh='MIDPOINT'
-            #self.reqRealTimeBars(3001, ContractSamples.EurGbpFx(), 5, "MIDPOINT", True, [])
-            #self.reqRealTimeBars(msg.obj.contractID, ct, 5, wtsh, True, [])
             #regular time hour= FALSE
-            self.reqRealTimeBars(msg.obj.contractID, ct, 5, wtsh, False, [])
 
-            #self.reqRealTimeBars(msg.obj.contractID, ct, 5, "MIDPOINT", True, [])
-            #self.reqRealTimeBars(msg.obj.contractID, ct, 5, "TRADES", True, [])
-            pass
+            nextID = self.nextId
+            # nextID=oneContract.contractID
+            self.nextIDconID[nextID] = msg.obj.contractID
+
+            if msg.obj.contractID in self.stop_reqRealTimeBars:
+                print('Error watchStart5Sec - we are already subscribed to ', msg.obj.contractID)
+                return
+            else:
+                self.stop_reqRealTimeBars[msg.obj.contractID] = nextID
+                self.reqRealTimeBars(nextID, ct, 5, wtsh, False, [])
+
+
+
+
 
     def Stop5SecWatch(self, msg):
             ct = makeSimpleContract(msg.obj)
             # self.cancelMktData(msg.obj.contractID)
-            self.cancelRealTimeBars(msg.obj.contractID)
-##################end the caller################################
+            self.cancelRealTimeBars(self.stop_reqRealTimeBars[msg.obj.contractID])
+            self.stop_reqRealTimeBars.pop(msg.obj.contractID)
+
+    ##################end the caller################################
 
 
 
@@ -388,66 +453,61 @@ class TestApp(TestClient, EWrapper):
 
     def tickGeneric(self, reqId:TickerId, tickType:TickType, value:float):
         EWrapper.tickGeneric(reqId, tickType, value)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tick Generic')
+        print("tickGeneric",reqId,tickType,value)
 
     def tickPrice(self, reqId:TickerId , tickType:TickType, price:float, attrib:TickAttrib):
         EWrapper.tickPrice(self,reqId,tickType, price, attrib)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tickPrice ',reqId,tickType,price,attrib)
+        print("tickGeneric", reqId, tickType, price,attrib)
 
     def tickSize(self, reqId:TickerId, tickType:TickType, size:int):
         EWrapper.tickSize(self,reqId,tickType,size)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tickSize ',reqId,tickType,size)
+        print("ticksize",reqId,tickType,size)
 
     def tickByTickAllLast(self, reqId: int, tickType: int, time: int, price: float,
                                                      size: int, tickAtrribLast: TickAttribLast, exchange: str,
                                                      specialConditions: str):
         super().tickByTickAllLast(reqId, tickType, time, price, size, tickAtrribLast,exchange, specialConditions)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tickByTickAllLast')
+        print('tickByTickAllLast')
         if tickType == 1:
-            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                   "Last.", price,'--2-',size,'--3--',datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"),'--4--',exchange,'--5---',tickAtrribLast,specialConditions)
+            print("tickByTickAllLast type =1.",reqId, price,'--2-',size,'--3--',datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"),'--4--',exchange,'--5---',tickAtrribLast,specialConditions)
         else:
-            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                   "AllLast.", end='')
-            disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-                   " ReqId:", reqId, "Time:", datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"), "Price:",
+            print("tickByTickAllLast type NOT 1. ReqId:", reqId, "Time:", datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"), "Price:",
                   price, "Size:", size, "Exch:", exchange, "Spec Cond:", specialConditions, "PastLimit:", tickAtrribLast.pastLimit, "Unreported:", tickAtrribLast.unreported)
 
     def tickByTickBidAsk(self, reqId: int, time: int, bidPrice: float, askPrice: float,
                          bidSize: int, askSize: int, tickAttribBidAsk: TickAttribBidAsk):
         #EWrapper.tickByTickBidAsk(reqId, time, bidPrice, askPrice,bidSize, askSize, tickAttribBidAsk)
         super().tickByTickBidAsk(reqId, time, bidPrice, askPrice, bidSize, askSize, tickAttribBidAsk)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               " ReqId:", reqId, "Time:", datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"), "askPrice:",
-                  askPrice, "askSize:", askSize, "bidPrice:", bidPrice, "bidSize:", bidSize,"tickAttribBidAsk:",tickAttribBidAsk )
+        #print("tickByTickBidAsk ReqId:", reqId, "Time:", datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"), "askPrice:",
+        #          askPrice, "askSize:", askSize, "bidPrice:", bidPrice, "bidSize:", bidSize,"tickAttribBidAsk:",tickAttribBidAsk )
+        self.realTickData[self.nextIDconID[reqId]].append([datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"),bidPrice,askPrice])
+
+        return
+        msg = toMessage('tickbytick')
+        # msg.obj=onetick
+        msg.obj = [self.nextIDconID[reqId],datetime.datetime.fromtimestamp(time).strftime("%Y%m%d %H:%M:%S"),askPrice,bidPrice ]
+        self.toWat.put(msg)
+
 
     def tickByTickMidPoint(self, reqId: int, time: int, midPoint: float):
         EWrapper.tickByTickMidPoint(reqId, time, midPoint)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tickbyTickMidPoint')
+        print('tickByTickMidPoint')
 
 
 
     def tickReqParams(self, tickerId:int, minTick:float, bboExchange:str, snapshotPermissions:int):
         EWrapper.tickReqParams(tickerId, minTick, bboExchange, snapshotPermissions)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tickReqParams')
+        print("tickReqParams")
 
 
     def tickString(self, reqId:TickerId, tickType:TickType, value:str):
         EWrapper.tickString(self,reqId,tickType,value)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'tickString',reqId,tickType,value)
+        print('tickString',reqId,tickType,value)
 
     def marketDataType(self, reqId:TickerId, marketDataType:int):
         EWrapper.marketDataType(reqId, marketDataType)
 
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'market data type',marketDataType)
+        print('market data type',marketDataType)
 
 
     def historicalData(self, reqId: int, bar: BarData):
@@ -468,7 +528,7 @@ class TestApp(TestClient, EWrapper):
         EWrapper.historicalData(self, reqId, bar)
         #print("historical data id ",reqId)
         #date, time = bar.date.split()
-        self.downloadHistInfo[reqId].oneStock.addOneBar(bar)
+        self.downloadHistInfo[self.nextIDconID[reqId]].oneStock.addOneBar(bar)
         #temp=f'{bar.date},{bar.open},{bar.close},{bar.low},{bar.high},{bar.barCount},{bar.volume},{bar.average}'
 
 
@@ -478,67 +538,55 @@ class TestApp(TestClient, EWrapper):
         #self.toGui.put(msg)
 
         EWrapper.historicalDataEnd(self, reqId, start, end)
-        disLog(getframeinfo(currentframe()).filename+":"+sys._getframe().f_code.co_name+":"+str(getframeinfo(currentframe()).lineno),
-               'historicalDataEnd')
-        #print('start first',start)
-        #print('end ',end)
 
-        if self.downloadHistInfo[reqId].whatToDownload=='histnew5secOneTime':
+        #translate back
+        #print("translate back",reqId,self.nextIDconID[reqId])
+        conID=self.nextIDconID[reqId]
+        #print('reqId after transalation ',conID)
+
+        if self.downloadHistInfo[conID].whatToDownload=='histnew5secOneTime':
             msg = toMessage('5secHist')
             #we must send the reaId besides the list
-            msg.obj =[reqId,self.downloadHistInfo[reqId]]
+            msg.obj =[conID,self.downloadHistInfo[conID]]
             self.toWat.put(msg) # we send to watch,
 
-            print('histnew5secOneTime',reqId)
-            #f = open(str(reqId) + "-5sec-what-i-download.txt", "a")
-
-            # for item in self.downloadHistInfo[reqId].oneStock.bars1min:
-            #     f.write(
-            #         item.date + ' ' + str(item.open) + ' ' + str(item.high) + ' ' + str(item.low) + ' ' + str(
-            #             item.close) + ' ' + str(item.volume) + '\r\n')
-            # f.close()
+            print('histnew5secOneTime - finished',conID)
 
             #must clear the downloadHistInfo
-            self.downloadHistInfo.pop(reqId)
+            self.downloadHistInfo.pop(conID)
             ## maybe we should send some message to gui too to inform the user that we are ready
 
-            cnt = len(self.downloadHistInfo)
-            print("histnew5secOneTime", cnt)
             return
 
-        ret=self.dbLite.addOneStock(self.downloadHistInfo[reqId])
+        ret=self.dbLite.addOneStock(self.downloadHistInfo[conID])
 
-        start = self.downloadHistInfo[reqId].oneStock.bars1min[0].date
+        start = self.downloadHistInfo[conID].oneStock.bars1min[0].date
 
-        del self.downloadHistInfo[reqId].oneStock.bars1min[:]
+        del self.downloadHistInfo[conID].oneStock.bars1min[:]
 
         if ret=='stop': #we don't need to download anymore in case of a newhist
 
-            if self.downloadHistInfo[reqId].whatToDownload=='histnewLevel1':
+            if self.downloadHistInfo[conID].whatToDownload=='histnewLevel1':
                 msg=toMessage('histnewLevel1End')
-                msg.obj=reqId
+                msg.obj=conID
                 self.toGui.put(msg) #let's anounce that we can go to level 2
-                print('hist new Level1 end')
-            self.downloadHistInfo.pop(reqId)  # removed from dictionary - no sens to stay there
+                #print('hist new Level1 end')
+            self.downloadHistInfo.pop(conID)  # removed from dictionary - no sens to stay there
+            print('finish new download')
             return
 
         #delete all the bars
-        self.downloadHistInfo[reqId].count += 1
+        self.downloadHistInfo[conID].count += 1
 
-        if self.downloadHistInfo[reqId].count>=60 and self.downloadHistInfo[reqId].whatToDownload=='histold':
+        if self.downloadHistInfo[conID].count>=10 and self.downloadHistInfo[conID].whatToDownload=='histold':
             #we already download 60 for history so do not send anymore messages
 
-
-            #msg = toMessage('HistFinish')
-            #msg.obj = self.downloadHistInfo[reqId]
-            #self.toGui.put(msg)
-
-            self.downloadHistInfo.pop(reqId)
+            self.downloadHistInfo.pop(conID)
             return
 
-        self.downloadHistInfo[reqId].dateToDownload = start
+        self.downloadHistInfo[conID].dateToDownload = start
         msg=toMessage('HistFinish')
-        msg.obj=self.downloadHistInfo[reqId]
+        msg.obj=self.downloadHistInfo[conID]
         self.toGui.put(msg)
         return
 
@@ -574,6 +622,10 @@ class TestApp(TestClient, EWrapper):
              #we need to put two spaces between date and time to be consistent with historical data format
              #onetick = OneTickWithInfo(reqId, OneTick(datetime.datetime.fromtimestamp(time).strftime("%Y%m%d  %H:%M:%S"), open_, high, low, close, volume, wap, count))
 
+             # translate back
+             #print("translate back", reqId, self.nextIDconID[reqId])
+             conID = self.nextIDconID[reqId]
+             #print('reqId after transalation ', conID)
 
              oneBar=BarData()
              oneBar.date=datetime.datetime.fromtimestamp(time).strftime("%Y%m%d  %H:%M:%S")
@@ -586,8 +638,33 @@ class TestApp(TestClient, EWrapper):
              oneBar.barCount=count
              msg=toMessage('5sec')
              #msg.obj=onetick
-             msg.obj=[reqId,oneBar]
+             msg.obj=[conID,oneBar]
              self.toWat.put(msg)
+             #print('realtimeBar ',oneBar.close)
+
+    def openOrder(self, orderId: OrderId, contract: Contract, order: Order, orderState: OrderState):
+        super().openOrder(orderId, contract, order, orderState)
+
+        print("OpenOrder. PermId: ", order.permId, "ClientId:", order.clientId, " OrderId:", orderId,
+                "Account:", order.account, "Symbol:", contract.symbol, "SecType:", contract.secType,
+                "Exchange:", contract.exchange, "Action:", order.action, "OrderType:", order.orderType,
+                "TotalQty:", order.totalQuantity, "CashQty:", order.cashQty,
+                "LmtPrice:", order.lmtPrice, "AuxPrice:", order.auxPrice, "Status:", orderState.status)
+        print("permID:",order.permId)
+        order.contract = contract
+        #self.permId2ord[order.permId] = order
+
+    def orderStatus(self, orderId: OrderId, status: str, filled: float,remaining: float, avgFillPrice: float, permId: int,
+                    parentId: int, lastFillPrice: float, clientId: int,whyHeld: str, mktCapPrice: float):
+        super().orderStatus(orderId, status, filled, remaining,
+        avgFillPrice, permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice)
+
+
+        print("OrderStatus. Id:", orderId, "Status:", status, "Filled:", filled,
+                "Remaining:", remaining, "AvgFillPrice:", avgFillPrice,
+                "PermId:", permId, "ParentId:", parentId, "LastFillPrice:",
+                lastFillPrice, "ClientId:", clientId, "WhyHeld:",
+                whyHeld, "MktCapPrice:", mktCapPrice)
 ################# end call back##############################
 
 

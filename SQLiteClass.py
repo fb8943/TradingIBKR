@@ -1,6 +1,7 @@
 import sqlite3 as sq
 import datetime
 import pandas as pd
+import numpy as np
 from ibapi.common import BarData
 
 from Source.OnesClasses import OneStock, OneContract
@@ -48,7 +49,10 @@ class DB:
                     tradingClass   TEXT,
                     barSize        TEXT,
                     whatToShow   TEXT,
-                    active       TEXT);"""
+                    active       TEXT,
+                    ordersize TEXT,
+                    stopsize TEXT,
+                    orderextra TEXT);"""
         self.conn.execute(sql)
 
     def createTableStock(self,conId):
@@ -67,7 +71,7 @@ class DB:
 
     def addContract(self,oneContract):
          #sql = "INSERT INTO Contract (currency, exchange, expiry,includeExpired,localSymbol,multiplier,primaryExch,putcall,secId,secIdType,secType,strike,symbol,tradingClass,barSize,whatToShow) Values (" +oneContract.getValues()+");";
-         sql = "INSERT INTO Contract (currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active) Values (" + oneContract.getValues() + ");";
+         sql = "INSERT INTO Contract (currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active,ordersize,stopsize,orderextra) Values (" + oneContract.getValues() + ");";
          cur = self.conn.cursor()
          cur.execute(sql)
          self.conn.commit()
@@ -103,17 +107,68 @@ class DB:
 
         return rtn
 
-    #this will return a multidimensional array
-    def getOneStock(self,symbol):
+    #this will return a dictionary Open1min,Date1min,etc
+    def getOneStockDic(self,symbol,limit='ALL',rth='NO'):
         cur = self.conn.cursor()
-        sql="SELECT * FROM {0} order by date".format('T'+str(symbol))
+        if limit=='ALL':
+            if rth=='NO':
+                sql="SELECT * FROM {0} order by date".format('T'+str(symbol))
+            else:
+                sql = "SELECT * FROM {0} where substr(Date,11,8)>='06:30:00' " \
+                      " and substr(Date,11,8)< '13:00:00' order by date".format('T' + str(symbol))
+        else:
+            if rth=='NO':
+                strSQL="SELECT count(*) FROM {0}".format('T'+str(symbol))
+            else:
+                strSQL = "SELECT count(*) FROM {0} where substr(Date,11,8)>='06:30:00'" \
+                      " and substr(Date,11,8)< '13:00:00'".format('T' + str(symbol))
+            cur.execute(strSQL)
+            result = cur.fetchone()
+            start = result[0] - limit
+            if rth=='NO':
+                sql = "SELECT * FROM {0} order by date limit {1},{2}".format('T' + str(symbol), start, limit)
+            else:
+                sql = "SELECT * FROM {0} where substr(Date,11,8)>='06:30:00'" \
+                      " and substr(Date,11,8)< '13:00:00' order by date limit " \
+                      "{1},{2}".format('T' + str(symbol), start, limit)
+
         cur.execute(sql)
         rows=cur.fetchall()
-        x=[]
+
+        Date1min=[]
+        Open1min=[]
+        High1min=[]
+        Low1min=[]
+        Close1min=[]
+        Volume1min=[]
+        Count1min=[]
+        Average1min=[]
+
+        x={'D1min':Date1min,'O1min':Open1min,'H1min':High1min,'L1min':Low1min,
+           'C1min':Close1min,'V1min':Volume1min,'N1min':Count1min,'A1min':Average1min}
         #oneStock=OneStock() suppose to return oneStock not a list
         for row in rows:
-            x.append([row[0],row[1],row[2],row[3],row[4],row[5],row[6],row[7]])
+            x['D1min'].append(row[0]) #Date
+            x['O1min'].append(row[1]) #Open
+            x['H1min'].append(row[2]) #High
+            x['L1min'].append(row[3]) #low
+            x['C1min'].append(row[4]) #close
+            x['V1min'].append(row[5]) #Volume
+            x['N1min'].append(row[6]) #count
+            x['A1min'].append(row[7]) #average
         return x
+
+        # this will return a multidimensional array
+    def getOneStock(self, symbol):
+            cur = self.conn.cursor()
+            sql = "SELECT * FROM {0} order by date".format('T' + str(symbol))
+            cur.execute(sql)
+            rows = cur.fetchall()
+            x = []
+            # oneStock=OneStock() suppose to return oneStock not a list
+            for row in rows:
+                x.append([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7]])
+            return x
 
     #this will return an Array of OneStock
     def getOneStock2(self,symbol,limit='ALL'):
@@ -126,8 +181,8 @@ class DB:
             result=cur.fetchone()
             start=result[0]-limit
             sql = "SELECT * FROM {0} order by date limit {1},{2}".format('T' + str(symbol),start,limit)
-            cur.execute(sql)
-            rows=cur.fetchall()
+        cur.execute(sql)
+        rows=cur.fetchall()
 
         oneStock=OneStock() #suppose to return oneStock not a list
         oneStock.tickid=symbol
@@ -159,35 +214,54 @@ class DB:
 
         return pd.read_sql_query(sql, self.conn)
 
+    #this will return a numpy structure
+    def getOneStockNumpy(self,symbol,limit='ALL'):
+        cur = self.conn.cursor()
+        if limit == 'ALL':
+            sql = "SELECT * FROM {0} order by date".format('T' + str(symbol))
+        else:
+            strSQL = "SELECT count(*) FROM {0}".format('T' + str(symbol))
+            cur.execute(strSQL)
+            result = cur.fetchone()
+            start = result[0] - limit
+            sql = "SELECT * FROM {0} order by date limit {1},{2}".format('T' + str(symbol), start, limit)
+            cur.execute(strSQL)
+            alist = cur.fetchall()
+            return np.array(alist)
 
+        return pd.read_sql_query(sql, self.conn)
+
+    #ordersize,stopsize,orderextra
 
     def populateContract(self):
         cur = self.conn.cursor()
-        cur.execute("SELECT conID,currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active FROM Contract order by localSymbol asc")
+        cur.execute("SELECT conID,currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active,ordersize,stopsize,orderextra FROM Contract order by localSymbol asc")
 
         rows = cur.fetchall()
         return rows
 
     def getActive(self):
         cur = self.conn.cursor()
-        sql = "SELECT currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active,conID FROM Contract where active='Yes'"
+        sql = "SELECT currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active,\
+        ordersize,stopsize,orderextra,conID FROM Contract where active='Yes' order by localSymbol"
         cur.execute(sql)
         rows = cur.fetchall()
         x = []
         # oneStock=OneStock() suppose to return oneStock not a list
         for row in rows:
-            x.append(OneContract(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7],row[8]))
+            x.append(OneContract(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7],row[8], row[9], row[10],row[11]))
         return x
 
     def getItem(self,conID):
         cur = self.conn.cursor()
-        sql = "SELECT currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active,conID FROM Contract where conID="+str(conID)
+        sql = "SELECT currency, localSymbol, expire,primaryExch,secType,barSize,whatToShow,active,\
+        ordersize,stopsize,orderextra,conID FROM Contract where conID="+str(conID)
         cur.execute(sql)
         rows = cur.fetchall()
         x = []
         # oneStock=OneStock() suppose to return oneStock not a list
         for row in rows:
-            return OneContract(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8])
+            return OneContract(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10],row[11])
 
 
     def deleteContract(self,conID):
@@ -202,7 +276,9 @@ class DB:
         self.conn.commit()
 
     def Update(self, val):
-        sql = "update Contract set currency='{1}', localSymbol='{2}', expire='{3}',primaryExch='{4}',secType='{5}',barSize='{6}',whatToShow='{7}',active='{8}' where conId={0};".format(*val)
+        sql = "update Contract set currency='{1}', localSymbol='{2}', expire='{3}',primaryExch='{4}',\
+        secType='{5}',barSize='{6}',whatToShow='{7}',active='{8}',ordersize='{9}',stopsize='{10}',orderextra='{11}'\
+         where conId={0};".format(*val)
         print(sql)
         cur = self.conn.cursor()
         cur.execute(sql)
